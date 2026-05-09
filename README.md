@@ -1,6 +1,10 @@
 # simpleimgio
 
-Pure Zig image input helpers for small encoder and image-tooling projects.
+Pure Zig image input helpers for encoder and image-tooling projects.
+
+I've found myself writing similar code to support simple formats like PPM in a
+few projects. This means that when I need to update them, there is redundant
+code that I'd rather consolidate in one place.
 
 ## Supported Decoders
 
