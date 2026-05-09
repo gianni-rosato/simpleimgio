@@ -2,6 +2,7 @@ const std = @import("std");
 
 pub const common = @import("common.zig");
 pub const pnm = @import("pnm.zig");
+pub const qoi = @import("qoi.zig");
 pub const y4m = @import("y4m.zig");
 pub const yuv = @import("yuv.zig");
 
@@ -11,10 +12,7 @@ pub const BitDepth = common.BitDepth;
 pub const Chroma = common.Chroma;
 pub const YuvFrame = yuv.Frame;
 
-pub const DecodeStillOptions = struct {
-    max_file_size: usize = 512 * 1024 * 1024,
-};
-
+pub const MAX_FILE_SZ: usize = 512 * 1024 * 1024;
 pub const RawYuvOptions = yuv.DecodeOptions;
 
 pub fn decodePnmBytes(
@@ -28,9 +26,8 @@ pub fn decodePnmFile(
     sys_io: std.Io,
     allocator: std.mem.Allocator,
     filename: []const u8,
-    options: DecodeStillOptions,
 ) !Image {
-    return pnm.decodeFile(sys_io, allocator, filename, options.max_file_size);
+    return pnm.decodeFile(sys_io, allocator, filename, MAX_FILE_SZ);
 }
 
 pub fn decodePamBytes(
@@ -44,9 +41,8 @@ pub fn decodePamFile(
     sys_io: std.Io,
     allocator: std.mem.Allocator,
     filename: []const u8,
-    options: DecodeStillOptions,
 ) !Image {
-    return pnm.decodePamFile(sys_io, allocator, filename, options.max_file_size);
+    return pnm.decodePamFile(sys_io, allocator, filename, MAX_FILE_SZ);
 }
 
 pub fn decodePpmBytes(
@@ -60,9 +56,23 @@ pub fn decodePpmFile(
     sys_io: std.Io,
     allocator: std.mem.Allocator,
     filename: []const u8,
-    options: DecodeStillOptions,
 ) !Image {
-    return pnm.decodePpmFile(sys_io, allocator, filename, options.max_file_size);
+    return pnm.decodePpmFile(sys_io, allocator, filename, MAX_FILE_SZ);
+}
+
+pub fn decodeQoiBytes(
+    allocator: std.mem.Allocator,
+    bytes: []const u8,
+) !Image {
+    return qoi.decodeBytes(allocator, bytes);
+}
+
+pub fn decodeQoiFile(
+    sys_io: std.Io,
+    allocator: std.mem.Allocator,
+    filename: []const u8,
+) !Image {
+    return qoi.decodeFile(sys_io, allocator, filename, MAX_FILE_SZ);
 }
 
 pub fn decodeYuv420Bytes(

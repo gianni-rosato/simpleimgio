@@ -18,6 +18,7 @@ Pure Zig image input helpers for small encoder and image-tooling projects.
   - yuv420p16le
 - PAM (`P7`)
 - PNM (`P1` through `P6`), including PPM (`P3`/`P6`)
+- QOI (`.qoi`), via [`qoilib`](https://github.com/gianni-rosato/qoilib)
 
 All decoders preserve source sample depth:
 
@@ -25,6 +26,8 @@ All decoders preserve source sample depth:
   one byte per sample for `maxval <= 255` and two big-endian bytes per sample
   for `maxval > 255`.
 - PBM bitmap samples are unpacked as `0` or `1`
+- QOI images decode to 8-bit RGB/RGBA with `maxval = 255`, matching the QOI
+  format
 - Still images can be converted to 8-bit with `image.to8Bit(allocator)`
 - Raw YUV/Y4M frames can be converted with `frame.to8Bit(allocator)`.
 
@@ -54,7 +57,7 @@ pub fn readPpm(
     allocator: std.mem.Allocator,
     path: []const u8,
 ) !void {
-    var image = try imgio.decodePpmFile(sys_io, allocator, path, .{});
+    var image = try imgio.decodePpmFile(sys_io, allocator, path);
     defer image.deinit(allocator);
 
     var eight = try image.to8Bit(allocator);

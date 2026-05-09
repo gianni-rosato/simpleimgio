@@ -3,11 +3,21 @@ const std = @import("std");
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
+    const qoilib_dep = b.dependency("qoilib", .{
+        .target = target,
+        .optimize = optimize,
+    });
 
     const mod = b.addModule("simpleimgio", .{
         .root_source_file = b.path("src/lib.zig"),
         .target = target,
         .optimize = optimize,
+        .imports = &.{
+            .{
+                .name = "qoilib",
+                .module = qoilib_dep.module("qoilib"),
+            },
+        },
     });
 
     const mod_tests = b.addTest(.{

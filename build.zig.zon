@@ -3,7 +3,12 @@
     .version = "0.0.0",
     .fingerprint = 0x4d22aedf39ee74a0, // Changing this has security and trust implications.
     .minimum_zig_version = "0.16.0",
-    .dependencies = .{},
+    .dependencies = .{
+        .qoilib = .{
+            .url = "git+https://github.com/gianni-rosato/qoilib.git#238b66d0e95881e84c25bf35f6e2b037ff22cd81",
+            .hash = "qoilib-0.0.0-w65pTnCBAADghQ-hVkVfiWnuGf4VrcX23fn5ZcVW7R1M",
+        },
+    },
     .paths = .{
         "build.zig",
         "build.zig.zon",
