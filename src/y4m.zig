@@ -21,7 +21,7 @@ pub const Decoder = struct {
     sys_io: std.Io,
     owns_file: bool = false,
     reader: std.Io.File.Reader,
-    buffer: [4096]u8,
+    reader_buffer: []u8,
 
     header: Header,
     frame_bytes: usize,
@@ -29,19 +29,22 @@ pub const Decoder = struct {
     line_buf: [4096]u8,
 
     pub fn init(allocator: std.mem.Allocator, sys_io: std.Io, file: std.Io.File) !Decoder {
+        const reader_buffer = try allocator.alloc(u8, 4096);
+        errdefer allocator.free(reader_buffer);
+
         var d: Decoder = .{
             .allocator = allocator,
             .file = file,
             .sys_io = sys_io,
             .owns_file = false,
-            .buffer = undefined,
+            .reader_buffer = reader_buffer,
             .reader = undefined,
             .header = .{ .width = 0, .height = 0 },
             .frame_bytes = 0,
             .line_buf = undefined,
         };
 
-        d.reader = file.readerStreaming(sys_io, &d.buffer);
+        d.reader = file.readerStreaming(sys_io, d.reader_buffer);
 
         const line = (try d.readLineOrEof()) orelse return error.UnexpectedEof;
         d.header = try parseStreamHeader(line);
@@ -52,6 +55,7 @@ pub const Decoder = struct {
 
     pub fn deinit(self: *Decoder) void {
         if (self.owns_file) self.file.close(self.sys_io);
+        self.allocator.free(self.reader_buffer);
         self.* = undefined;
     }
 
@@ -286,5 +290,37 @@ test "decode multiple y4m frames from memory" {
     var second = (try decoder.readFrame()).?;
     defer second.deinit(allocator);
     try std.testing.expectEqualSlices(u8, &[_]u8{ 7, 8, 9, 10 }, second.y);
+    try std.testing.expectEqual(@as(?Frame, null), try decoder.readFrame());
+}
+
+test "decode first y4m frame from file-backed decoder" {
+    const allocator = std.testing.allocator;
+    const sys_io = std.testing.io;
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    const stream =
+        "YUV4MPEG2 W2 H2 F25:1 Ip A1:1 C420p10 XYSCSS=420P10\n" ++
+        "FRAME\n" ++
+        "\x00\x01\x00\x02\x00\x03\x00\x04" ++
+        "\x00\x05" ++
+        "\x00\x06";
+
+    const file = try tmp.dir.createFile(sys_io, "first-frame.y4m", .{ .read = true });
+    defer file.close(sys_io);
+    try file.writePositionalAll(sys_io, stream, 0);
+
+    var decoder = try Decoder.init(allocator, sys_io, file);
+    defer decoder.deinit();
+
+    try std.testing.expectEqual(@as(usize, 2), decoder.header.width);
+    try std.testing.expectEqual(@as(usize, 2), decoder.header.height);
+    try std.testing.expectEqual(BitDepth.b10, decoder.header.bit_depth);
+
+    var frame = (try decoder.readFrame()).?;
+    defer frame.deinit(allocator);
+    try std.testing.expectEqualSlices(u8, "\x00\x01\x00\x02\x00\x03\x00\x04", frame.y);
+    try std.testing.expectEqualSlices(u8, "\x00\x05", frame.u);
+    try std.testing.expectEqualSlices(u8, "\x00\x06", frame.v);
     try std.testing.expectEqual(@as(?Frame, null), try decoder.readFrame());
 }
