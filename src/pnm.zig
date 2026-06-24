@@ -387,6 +387,24 @@ test "decode ascii ppm with comments preserving maxval" {
     try std.testing.expectEqualSlices(u8, &[_]u8{ 0, 255, 109 }, eight.data);
 }
 
+test "to8Bit keeps already 8-bit samples unchanged" {
+    const allocator = std.testing.allocator;
+    var image = try decodeBytes(allocator,
+        \\P3
+        \\1 1
+        \\255
+        \\12 34 56
+        \\
+    );
+    defer image.deinit(allocator);
+
+    var eight = try image.to8Bit(allocator);
+    defer eight.deinit(allocator);
+
+    try std.testing.expectEqual(@as(u16, 255), eight.maxval);
+    try std.testing.expectEqualSlices(u8, &[_]u8{ 12, 34, 56 }, eight.data);
+}
+
 test "decode pam with sixteen-bit samples preserving data" {
     const allocator = std.testing.allocator;
     var image = try decodeBytes(allocator, "P7\nWIDTH 1\nHEIGHT 1\nDEPTH 3\nMAXVAL 65535\nTUPLTYPE RGB\nENDHDR\n" ++

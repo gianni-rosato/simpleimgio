@@ -37,14 +37,15 @@ pub const Image = struct {
 
         if (self.kind == .bitmap) {
             if (self.data.len != samples) return error.BadImageData;
-            for (self.data, data) |src, *dst| {
+            for (self.data, data) |src, *dst|
                 dst.* = if (src == 0) 255 else 0;
-            }
-        } else if (self.maxval <= 255) {
+        } else if (self.maxval == 255) {
             if (self.data.len != samples) return error.BadImageData;
-            for (self.data, data) |src, *dst| {
+            @memcpy(data, self.data);
+        } else if (self.maxval < 255) {
+            if (self.data.len != samples) return error.BadImageData;
+            for (self.data, data) |src, *dst|
                 dst.* = requantizeTo8(src, self.maxval);
-            }
         } else {
             if (self.data.len != samples * 2) return error.BadImageData;
             for (data, 0..) |*dst, i| {
