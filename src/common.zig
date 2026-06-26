@@ -64,7 +64,43 @@ pub const Image = struct {
             .data = data,
         };
     }
+
+    pub fn to8BitOwned(self: *Image, allocator: std.mem.Allocator) !Image {
+        const samples = try self.sampleCount();
+
+        if (self.kind != .bitmap and self.maxval == 255) {
+            if (self.data.len != samples) return error.BadImageData;
+
+            const data = self.data;
+            const result: Image = .{
+                .width = self.width,
+                .height = self.height,
+                .depth = self.depth,
+                .maxval = 255,
+                .kind = self.kind,
+                .data = data,
+            };
+            self.* = emptyImage();
+            return result;
+        }
+
+        const result = try self.to8Bit(allocator);
+        allocator.free(self.data);
+        self.* = emptyImage();
+        return result;
+    }
 };
+
+fn emptyImage() Image {
+    return .{
+        .width = 0,
+        .height = 0,
+        .depth = 0,
+        .maxval = 0,
+        .kind = .pam,
+        .data = &.{},
+    };
+}
 
 pub const Chroma = enum {
     yuv420,

@@ -32,7 +32,9 @@ All decoders preserve source sample depth:
 - PBM bitmap samples are unpacked as `0` or `1`
 - QOI images decode to 8-bit RGB/RGBA with `maxval = 255`, matching the QOI
   format
-- Still images can be converted to 8-bit with `image.to8Bit(allocator)`
+- Still images can be converted to 8-bit with `image.to8Bit(allocator)`.
+  Use `image.to8BitOwned(allocator)` when the original image can be consumed;
+  already-8-bit sample data is reused without an allocation or copy.
 - Raw YUV/Y4M frames can be converted with `frame.to8Bit(allocator)`.
 
 ## Zig Usage

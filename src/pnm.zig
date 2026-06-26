@@ -249,11 +249,13 @@ fn decodePam(allocator: std.mem.Allocator, bytes: []const u8) !Image {
 fn validateSamples(data: []const u8, samples: usize, maxval: u16) !void {
     if (maxval <= 255) {
         if (data.len != samples) return error.BadImageData;
+        if (maxval == 255) return;
         for (data) |sample| {
             if (sample > maxval) return error.SampleOutOfRange;
         }
     } else {
         if (data.len != samples * 2) return error.BadImageData;
+        if (maxval == 65535) return;
         for (0..samples) |i| {
             const sample = (@as(u16, data[i * 2]) << 8) | data[i * 2 + 1];
             if (sample > maxval) return error.SampleOutOfRange;
@@ -403,6 +405,53 @@ test "to8Bit keeps already 8-bit samples unchanged" {
 
     try std.testing.expectEqual(@as(u16, 255), eight.maxval);
     try std.testing.expectEqualSlices(u8, &[_]u8{ 12, 34, 56 }, eight.data);
+}
+
+test "to8BitOwned reuses already 8-bit sample data" {
+    const allocator = std.testing.allocator;
+    var image = try decodeBytes(allocator,
+        \\P6
+        \\1 1
+        \\255
+        \\
+    ++ "\x0c\x22\x38");
+    defer image.deinit(allocator);
+
+    const original_data = image.data.ptr;
+    var eight = try image.to8BitOwned(allocator);
+    defer eight.deinit(allocator);
+
+    try std.testing.expectEqual(@as([*]u8, original_data), eight.data.ptr);
+    try std.testing.expectEqual(@as(usize, 0), image.data.len);
+    try std.testing.expectEqual(@as(u16, 255), eight.maxval);
+    try std.testing.expectEqualSlices(u8, &[_]u8{ 12, 34, 56 }, eight.data);
+}
+
+test "to8BitOwned converts and releases non-8-bit sample data" {
+    const allocator = std.testing.allocator;
+    var image = try decodeBytes(allocator,
+        \\P3
+        \\1 1
+        \\7
+        \\0 7 3
+        \\
+    );
+    defer image.deinit(allocator);
+
+    var eight = try image.to8BitOwned(allocator);
+    defer eight.deinit(allocator);
+
+    try std.testing.expectEqual(@as(usize, 0), image.data.len);
+    try std.testing.expectEqual(@as(u16, 255), eight.maxval);
+    try std.testing.expectEqualSlices(u8, &[_]u8{ 0, 255, 109 }, eight.data);
+}
+
+test "binary sample validation still rejects values above maxval" {
+    const allocator = std.testing.allocator;
+    try std.testing.expectError(
+        error.SampleOutOfRange,
+        decodeBytes(allocator, "P6\n1 1\n7\n" ++ "\x00\x08\x03"),
+    );
 }
 
 test "decode pam with sixteen-bit samples preserving data" {
