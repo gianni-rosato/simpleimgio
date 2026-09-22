@@ -8,15 +8,22 @@ pub const DecodeOptions = struct {
     width: usize,
     height: usize,
     bit_depth: BitDepth = .b8,
+    color_range: ColorRange = .unspecified,
+    chroma_location: ChromaLocation = .unspecified,
     has_alpha: bool = false,
     chroma: Chroma = .yuv420,
 };
+
+pub const ColorRange = enum { unspecified, limited, full };
+pub const ChromaLocation = enum { unspecified, left, center, top_left };
 
 pub const Frame = struct {
     width: usize,
     height: usize,
     chroma: Chroma = .yuv420,
     bit_depth: BitDepth = .b8,
+    color_range: ColorRange = .unspecified,
+    chroma_location: ChromaLocation = .unspecified,
 
     y: []u8,
     u: []u8,
@@ -83,6 +90,8 @@ pub const Frame = struct {
                 .width = self.width,
                 .height = self.height,
                 .chroma = self.chroma,
+                .color_range = self.color_range,
+                .chroma_location = self.chroma_location,
                 .bit_depth = .b8,
                 .y = y,
                 .u = u,
@@ -120,6 +129,8 @@ pub const Frame = struct {
             .width = self.width,
             .height = self.height,
             .chroma = self.chroma,
+            .color_range = self.color_range,
+            .chroma_location = self.chroma_location,
             .bit_depth = .b8,
             .y = y,
             .u = u,
@@ -172,6 +183,8 @@ pub fn decode420Bytes(allocator: std.mem.Allocator, bytes: []const u8, options: 
         .width = options.width,
         .height = options.height,
         .chroma = options.chroma,
+        .color_range = options.color_range,
+        .chroma_location = options.chroma_location,
         .bit_depth = options.bit_depth,
         .y = y,
         .u = u,

@@ -105,3 +105,22 @@ while (try decoder.readFrame()) |frame_value| {
 ```
 
 See `src/lib.zig` for more info.
+
+Y4M headers and decoded frames retain `color_range` and `chroma_location`.
+An omitted chroma tag remains unspecified; `C420` and `C420jpeg` are centered,
+`C420mpeg2` is left-sited, and `C420paldv` is top-left-sited, matching FFmpeg's
+Y4M demuxer. `XCOLORRANGE=FULL` and `XCOLORRANGE=LIMITED` are preserved.
+Requantizing a frame preserves these fields.
+
+`YuvRgbConverter.init(allocator, width, height)` creates reusable scratch storage.
+Call `convert(frame, rgb)` with a `width * height * 3` float slice, then `deinit()`
+when finished. The output is interleaved linear RGB for SDR metric inputs.
+Conversion follows Vship's defaults: unspecified range is limited, unspecified
+chroma location is left, the matrix is BT.709 above 650 lines and BT.601 otherwise,
+with BT.709 primaries and gamma 2.4 above 650 lines, or BT.470 BG primaries
+and gamma 2.6 otherwise. Output uses linear BT.709 primaries; the SD primary
+conversion preserves Vship's RGB-to-XYZ coefficients. Chroma is reconstructed
+with separable cubic Hermite interpolation, and samples retain their source bit depth until
+conversion. A 4096-interval transfer lookup interpolates linear values with
+less than 0.000001 absolute error. Override range or location on the frame before
+conversion when the source metadata is missing or incorrect.
