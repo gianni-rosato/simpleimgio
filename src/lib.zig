@@ -95,6 +95,8 @@ pub fn decodeYuv420File(
 pub const Y4mDecoder = y4m.Decoder;
 pub const Y4mMemoryDecoder = y4m.MemoryDecoder;
 
+pub const YuvRgbConverter = @import("yuv_rgb.zig").Converter;
+
 test {
     std.testing.refAllDecls(@This());
 }

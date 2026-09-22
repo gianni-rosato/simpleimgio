@@ -13,6 +13,8 @@ pub const Header = struct {
     fps_den: u32 = 1,
     chroma: Chroma = .yuv420,
     bit_depth: BitDepth = .b8,
+    color_range: yuv.ColorRange = .unspecified,
+    chroma_location: yuv.ChromaLocation = .unspecified,
 };
 
 pub const Decoder = struct {
@@ -166,6 +168,10 @@ fn parseStreamHeader(line: []const u8) !Header {
                 if (tok[1] != 'p') return error.UnsupportedInterlace;
             },
             'C' => try parseChromaToken(&header, tok[1..]),
+            'X' => {
+                if (std.mem.eql(u8, tok, "XCOLORRANGE=FULL")) header.color_range = .full;
+                if (std.mem.eql(u8, tok, "XCOLORRANGE=LIMITED")) header.color_range = .limited;
+            },
             else => {},
         }
     }
@@ -179,6 +185,14 @@ fn parseChromaToken(header: *Header, ctoken: []const u8) !void {
     if (!std.mem.startsWith(u8, ctoken, "420")) return error.UnsupportedChroma;
 
     header.chroma = .yuv420;
+    header.chroma_location = if (std.mem.eql(u8, ctoken, "420") or std.mem.eql(u8, ctoken, "420jpeg"))
+        .center
+    else if (std.mem.eql(u8, ctoken, "420mpeg2"))
+        .left
+    else if (std.mem.eql(u8, ctoken, "420paldv"))
+        .top_left
+    else
+        .unspecified;
     if (indexOfAsciiNoCase(ctoken, "p9") != null)
         header.bit_depth = .b9
     else if (indexOfAsciiNoCase(ctoken, "p10") != null)
@@ -223,6 +237,8 @@ fn frameFromOwnedMemory(header: Header, mem: []u8) Frame {
         .height = header.height,
         .chroma = header.chroma,
         .bit_depth = header.bit_depth,
+        .color_range = header.color_range,
+        .chroma_location = header.chroma_location,
         .y = mem[0..y_bytes],
         .u = mem[y_bytes .. y_bytes + c_bytes],
         .v = mem[y_bytes + c_bytes .. total],
@@ -323,4 +339,34 @@ test "decode first y4m frame from file-backed decoder" {
     try std.testing.expectEqualSlices(u8, "\x00\x05", frame.u);
     try std.testing.expectEqualSlices(u8, "\x00\x06", frame.v);
     try std.testing.expectEqual(@as(?Frame, null), try decoder.readFrame());
+}
+
+test "preserve Y4M range and chroma location through decoding and requantization" {
+    const allocator = std.testing.allocator;
+    const cases = .{
+        .{ "", yuv.ChromaLocation.unspecified, BitDepth.b8 },
+        .{ " C420", yuv.ChromaLocation.center, BitDepth.b8 },
+        .{ " C420jpeg", yuv.ChromaLocation.center, BitDepth.b8 },
+        .{ " C420mpeg2", yuv.ChromaLocation.left, BitDepth.b8 },
+        .{ " C420paldv", yuv.ChromaLocation.top_left, BitDepth.b8 },
+        .{ " C420p10", yuv.ChromaLocation.unspecified, BitDepth.b10 },
+    };
+    inline for (cases) |case| {
+        const header = try parseStreamHeader("YUV4MPEG2 W2 H2 F50:1 Ip XCOLORRANGE=FULL" ++ case[0]);
+        try std.testing.expectEqual(yuv.ColorRange.full, header.color_range);
+        try std.testing.expectEqual(case[1], header.chroma_location);
+        try std.testing.expectEqual(case[2], header.bit_depth);
+        const payload = try allocator.alloc(u8, computeFrameBytes(header));
+        @memset(payload, 0);
+        var frame = frameFromOwnedMemory(header, payload);
+        defer frame.deinit(allocator);
+        var eight = try frame.to8Bit(allocator);
+        defer eight.deinit(allocator);
+        try std.testing.expectEqual(header.color_range, eight.color_range);
+        try std.testing.expectEqual(header.chroma_location, eight.chroma_location);
+    }
+    const limited = try parseStreamHeader("YUV4MPEG2 W2 H2 XCOLORRANGE=LIMITED");
+    try std.testing.expectEqual(yuv.ColorRange.limited, limited.color_range);
+    const unknown = try parseStreamHeader("YUV4MPEG2 W2 H2 XCOLORRANGE=UNKNOWN");
+    try std.testing.expectEqual(yuv.ColorRange.unspecified, unknown.color_range);
 }
