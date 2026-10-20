@@ -1,0 +1,30 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        optimize: [debug, safe, fast, small]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2
+        with:
+          version: 0.17.0
+          cache-key: ${{ matrix.optimize }}
+      - run: zig fmt --check build.zig build.zig.zon src bench
+      - run: zig build test -Doptimize=${{ matrix.optimize }} --summary all
+      - if: matrix.optimize == 'fast'
+        run: |
+          zig build bench -Doptimize=fast
+          zig-out/bin/simpleimgio-bench
