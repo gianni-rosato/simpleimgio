@@ -31,7 +31,7 @@ pub const Converter = struct {
         if (frame.width != self.width or frame.height != self.height) return error.DimensionMismatch;
         if (frame.chroma != .yuv420) return error.UnsupportedChroma;
         if (rgb.len != self.width * self.height * 3) return error.BadImageData;
-        const bits: u5 = @intCast(@intFromEnum(frame.bit_depth));
+        const bits: u5 = @intCast(@backingInt(frame.bit_depth));
         const bytes: usize = if (bits == 8) 1 else 2;
         const cw = (self.width + 1) / 2;
         const ch = (self.height + 1) / 2;

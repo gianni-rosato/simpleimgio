@@ -48,10 +48,11 @@ pub const Image = struct {
                 dst.* = requantizeTo8(src, self.maxval);
         } else {
             if (self.data.len != samples * 2) return error.BadImageData;
-            for (data, 0..) |*dst, i| {
-                const in_idx = i * 2;
-                const sample = (@as(u16, self.data[in_idx]) << 8) | self.data[in_idx + 1];
-                dst.* = requantizeTo8(sample, self.maxval);
+            // Keep common source ranges constant in the loop so division can
+            // become multiplication/shifts instead of a divide per sample.
+            switch (self.maxval) {
+                inline 511, 1023, 4095, 65535 => |maxval| requantizeBigEndian(data, self.data, maxval),
+                else => requantizeBigEndian(data, self.data, self.maxval),
             }
         }
 
@@ -90,6 +91,13 @@ pub const Image = struct {
         return result;
     }
 };
+
+inline fn requantizeBigEndian(dst: []u8, src: []const u8, maxval: u16) void {
+    for (dst, 0..) |*d, i| {
+        const sample = std.mem.readInt(u16, src[i * 2 ..][0..2], .big);
+        d.* = requantizeTo8(sample, maxval);
+    }
+}
 
 fn emptyImage() Image {
     return .{
@@ -194,4 +202,30 @@ pub fn readFileAlloc(
     const read = try file.readPositionalAll(sys_io, bytes, 0);
     if (read != file_size) return error.UnexpectedEof;
     return bytes;
+}
+
+test "high-depth image conversion matches rounded scaling for every u16 sample" {
+    const allocator = std.testing.allocator;
+    const samples = 65536;
+    // Offset the source to exercise unaligned big-endian reads too.
+    const storage = try allocator.alloc(u8, samples * 2 + 1);
+    defer allocator.free(storage);
+    const source = storage[1..];
+    for (0..samples) |i| std.mem.writeInt(u16, source[i * 2 ..][0..2], @intCast(i), .big);
+    for ([_]u16{ 256, 511, 1000, 1023, 4095, 65535 }) |maxval| {
+        const image: Image = .{
+            .width = samples,
+            .height = 1,
+            .depth = 1,
+            .maxval = maxval,
+            .kind = .grayscale,
+            .data = source,
+        };
+        var eight = try image.to8Bit(allocator);
+        defer eight.deinit(allocator);
+        for (eight.data, 0..) |actual, sample| {
+            const expected = (@as(u64, @min(sample, maxval)) * 255 + maxval / 2) / maxval;
+            try std.testing.expectEqual(@as(u8, @intCast(expected)), actual);
+        }
+    }
 }

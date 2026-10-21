@@ -39,6 +39,8 @@ All decoders preserve source sample depth:
 
 ## Zig Usage
 
+Requires Zig 0.17.0 or newer.
+
 Add as a dependency to your Zig project:
 
 ```sh
@@ -125,3 +127,38 @@ retain their source bit depth until conversion. A 4096-interval transfer lookup
 interpolates linear values with less than 0.000001 absolute error. Override
 range or location on the frame before conversion when the source metadata is
 missing or incorrect.
+
+## Development
+
+Run the tests with `zig build test`. Optimized configurations use
+`-Doptimize=safe`, `-Doptimize=fast`, or `-Doptimize=small` with Zig 0.17.
+
+Build the 1080p performance workloads with `zig build bench -Doptimize=fast`,
+then run `zig-out/bin/simpleimgio-bench`. Each line reports the workload,
+nanoseconds per iteration, and an output checksum. Fixture generation is excluded
+from timing; file workloads measure warm filesystem-cache reads. Allocating
+operations include allocation and cleanup; RGB conversion reuses its scratch
+storage. The owned 8-bit image workload measures ownership transfer alone.
+
+To compare two prebuilt binaries on the same idle machine:
+
+```sh
+python3 bench/compare.py /path/to/baseline /path/to/candidate \
+    --samples 16 --output results.json
+```
+
+The script warms both binaries, alternates execution order, checks matching
+output checksums, and saves all measurements. It reports paired geometric mean
+ratios with bootstrap 95% confidence intervals. A workload passes when the upper
+confidence bound is within the default 5% slowdown limit; regressions and
+inconclusive results both cause a nonzero exit. These measurements cover the
+included workloads and host, rather than every possible input or architecture.
+
+For a Zig 0.16 comparison, apply the same benchmark files and build step to the
+baseline source, keep its `minimum_zig_version` at 0.16.0, and build it using
+`zig build bench -Doptimize=ReleaseFast --prefix /path/to/baseline-prefix`.
+
+The [Zig 0.17 upgrade measurements](bench/results/zig-0.17-aarch64-macos.json)
+contain all 24 paired samples, source/binary hashes, host details, and results
+for the 19 workloads on arm64 macOS. All workloads passed the 5% limit; 16-bit
+image and 10-bit YUV conversion times decreased by about 25% and 63% respectively.

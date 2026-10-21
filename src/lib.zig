@@ -100,3 +100,40 @@ pub const YuvRgbConverter = @import("yuv_rgb.zig").Converter;
 test {
     std.testing.refAllDecls(@This());
 }
+
+test "file helpers preserve decoded pixels" {
+    const allocator = std.testing.allocator;
+    const io = std.testing.io;
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    const rgb = &[_]u8{ 255, 0, 0, 0, 255, 0 };
+    const encoded_qoi = try @import("qoilib").encQoi(allocator, rgb, 2, 1, 3, .{});
+    defer allocator.free(encoded_qoi);
+    const fixtures = .{
+        .{ "input.pnm", "P6\n2 1\n255\n" ++ rgb.*, decodePnmFile },
+        .{ "input.ppm", "P6\n2 1\n255\n" ++ rgb.*, decodePpmFile },
+        .{ "input.pam", "P7\nWIDTH 2\nHEIGHT 1\nDEPTH 3\nMAXVAL 255\nTUPLTYPE RGB\nENDHDR\n" ++ rgb.*, decodePamFile },
+        .{ "input.qoi", encoded_qoi, decodeQoiFile },
+    };
+    inline for (fixtures) |fixture| {
+        try tmp.dir.writeFile(io, .{ .sub_path = fixture[0], .data = fixture[1] });
+        const path = try tmp.dir.realPathFileAlloc(io, fixture[0], allocator);
+        defer allocator.free(path);
+        var image = try fixture[2](io, allocator, path);
+        defer image.deinit(allocator);
+        try std.testing.expectEqual(@as(usize, 2), image.width);
+        try std.testing.expectEqual(@as(usize, 1), image.height);
+        try std.testing.expectEqualSlices(u8, rgb, image.data);
+    }
+
+    const raw = &[_]u8{ 1, 2, 3, 4, 5, 6 };
+    try tmp.dir.writeFile(io, .{ .sub_path = "input.yuv", .data = raw });
+    const path = try tmp.dir.realPathFileAlloc(io, "input.yuv", allocator);
+    defer allocator.free(path);
+    var frame = try decodeYuv420File(io, allocator, path, .{ .width = 2, .height = 2 });
+    defer frame.deinit(allocator);
+    try std.testing.expectEqualSlices(u8, raw[0..4], frame.y);
+    try std.testing.expectEqualSlices(u8, raw[4..5], frame.u);
+    try std.testing.expectEqualSlices(u8, raw[5..6], frame.v);
+}

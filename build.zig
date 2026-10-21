@@ -27,4 +27,19 @@ pub fn build(b: *std.Build) void {
 
     const test_step = b.step("test", "Run tests");
     test_step.dependOn(&run_mod_tests.step);
+
+    const benchmark = b.addExecutable(.{
+        .name = "simpleimgio-bench",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("bench/main.zig"),
+            .target = target,
+            .optimize = optimize,
+            .imports = &.{
+                .{ .name = "simpleimgio", .module = mod },
+                .{ .name = "qoilib", .module = qoilib_dep.module("qoilib") },
+            },
+        }),
+    });
+    const install_benchmark = b.addInstallArtifact(benchmark, .{});
+    b.step("bench", "Build the performance benchmark").dependOn(&install_benchmark.step);
 }

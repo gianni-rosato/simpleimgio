@@ -119,7 +119,7 @@ pub const Frame = struct {
         offset += c_samples;
         const a = if (self.a != null) mem[offset .. offset + a_samples] else null;
 
-        const bits: u5 = @intCast(@intFromEnum(self.bit_depth));
+        const bits: u5 = @intCast(@backingInt(self.bit_depth));
         requantizePlaneLE(y, self.y, bits);
         requantizePlaneLE(u, self.u, bits);
         requantizePlaneLE(v, self.v, bits);
@@ -238,9 +238,52 @@ fn asU16LE(bytes: []const u8, bit_depth: BitDepth) ![]align(1) const u16 {
 }
 
 fn requantizePlaneLE(dst: []u8, src: []const u8, bits: u5) void {
-    for (dst, 0..) |*d, i| {
-        const sample = std.mem.readInt(u16, @as(*const [2]u8, @ptrCast(&src[i * 2])), .little);
+    // Dispatch once per plane so shifts and clamping limits are constants.
+    switch (bits) {
+        inline 9, 10, 12, 16 => |depth| requantizePlaneLEFixed(dst, src, depth),
+        else => unreachable,
+    }
+}
+
+fn requantizePlaneLEFixed(dst: []u8, src: []const u8, comptime bits: u5) void {
+    const lanes = 8;
+    const Wide = @Vector(lanes, u32);
+    const peak: Wide = @splat((@as(u32, 1) << bits) - 1);
+    const half: Wide = @splat(@as(u32, 1) << (bits - 1));
+    var i: usize = 0;
+    // Eight lanes keep the clamp and shifts in SIMD registers. The scalar
+    // tail handles arbitrary plane lengths and neither path needs alignment.
+    while (dst.len - i >= lanes) : (i += lanes) {
+        const source_samples: @Vector(lanes, u16) = @bitCast(src[i * 2 ..][0 .. lanes * 2].*);
+        const samples: Wide = @intCast(if (@import("builtin").target.cpu.arch.endian() == .little) source_samples else @byteSwap(source_samples));
+        const t = @min(samples, peak) * @as(Wide, @splat(255)) + half;
+        const scaled = (t + (t >> @splat(bits))) >> @splat(bits);
+        const narrow: @Vector(lanes, u8) = @intCast(scaled);
+        dst[i..][0..lanes].* = @bitCast(narrow);
+    }
+    for (dst[i..], i..) |*d, index| {
+        const sample = std.mem.readInt(u16, src[index * 2 ..][0..2], .little);
         d.* = common.requantizeBlinnish(@intCast(sample), bits);
+    }
+}
+
+test "high-depth plane conversion matches rounded scaling for every u16 sample" {
+    const allocator = std.testing.allocator;
+    const samples = 65537;
+    const storage = try allocator.alloc(u8, samples * 2 + 1);
+    defer allocator.free(storage);
+    const source = storage[1..];
+    const result = try allocator.alloc(u8, samples);
+    defer allocator.free(result);
+    for (0..samples) |i| std.mem.writeInt(u16, source[i * 2 ..][0..2], @truncate(i), .little);
+    for ([_]u5{ 9, 10, 12, 16 }) |bits| {
+        requantizePlaneLE(result, source, bits);
+        const peak = (@as(u64, 1) << bits) - 1;
+        for (result, 0..) |actual, i| {
+            const sample: u16 = @truncate(i);
+            const expected = (@min(@as(u64, sample), peak) * 255 + peak / 2) / peak;
+            try std.testing.expectEqual(@as(u8, @intCast(expected)), actual);
+        }
     }
 }
 
